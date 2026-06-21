@@ -1,0 +1,153 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag for release (e.g., v1.1.0). Оставьте пустым — будет взят из последнего коммита по версии файла или автоинкремент.'
+        required: false
+        default: ''
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine tag
+        id: tag
+        shell: pwsh
+        run: |
+          $inputTag = "${{ github.event.inputs.tag }}"
+          if ($inputTag -ne "") {
+            $tag = $inputTag
+          } else {
+            # Найти последний тег, иначе начать с v1.0.0
+            # Используем try/catch, чтобы LASTEXITCODE не сломал шаг
+            $lastTag = $null
+            try {
+              $lastTag = git describe --tags --abbrev=0 2>$null
+            } catch {
+              # нет тегов — игнорируем
+            }
+            if (-not $lastTag) {
+              $tag = "v1.0.0"
+            } else {
+              # Автоинкремент patch-версии
+              $parts = $lastTag -replace '^v','' -split '\.'
+              $patch = [int]$parts[2] + 1
+              $tag = "v$($parts[0]).$($parts[1]).$patch"
+            }
+          }
+          Write-Host "tag=$tag"
+          echo "tag=$tag" >> $env:GITHUB_OUTPUT
+          $LASTEXITCODE = 0
+
+      - name: Generate changelog
+        id: changelog
+        shell: pwsh
+        run: |
+          $lastTag = git describe --tags --abbrev=0 2>$null
+          if ($LASTEXITCODE -ne 0) { $lastTag = $null }
+
+          # Последние 10 коммитов
+          if ($lastTag) {
+            $log = git log "$lastTag..HEAD" --pretty=format:"- %s (%h)" --no-merges --max-count=10
+            $compareUrl = "https://github.com/${{ github.repository }}/compare/${lastTag}...${{ steps.tag.outputs.tag }}"
+          } else {
+            $log = git log --pretty=format:"- %s (%h)" --no-merges --max-count=10
+            $compareUrl = "https://github.com/${{ github.repository }}/commits/${{ steps.tag.outputs.tag }}"
+          }
+
+          if (-not $log) {
+            $log = "- Initial release"
+          }
+
+          echo "lastTag=$lastTag" >> $env:GITHUB_OUTPUT
+          echo "compareUrl=$compareUrl" >> $env:GITHUB_OUTPUT
+
+          # Multiline output через heredoc (EOF) — сохраняет реальные переносы строк
+          echo "log<<EOF" >> $env:GITHUB_OUTPUT
+          $log
+          echo "EOF" >> $env:GITHUB_OUTPUT
+
+          $LASTEXITCODE = 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Build MinecraftVersionChecker.exe
+        run: |
+          python build_exe.py
+
+      - name: Create README.txt
+        shell: pwsh
+        run: |
+          $archiveName = "MinecraftVersionChecker-${{ steps.tag.outputs.tag }}"
+          @"
+          Minecraft Version Checker — проверка версий Minecraft клиентов
+
+          == Запуск ==
+          1. Распакуйте архив $archiveName.zip
+          2. Запустите MinecraftVersionChecker.exe — установка не требуется
+          3. Выберите режим проверки из меню
+          4. Дождитесь завершения проверки
+
+          == Требования ==
+          - OS: Windows 10 или Windows 11
+          - Версии Minecraft: любые
+
+          Для самой программы не требуется установка Python или дополнительных библиотек.
+
+          == Сборка из исходников ==
+          Требуется Python 3.12+ и PyInstaller.
+          Выполните в корне проекта:
+            pip install -r requirements.txt
+            python build_exe.py
+          "@ | Out-File -FilePath README.txt -Encoding utf8
+
+      - name: Create ZIP archive
+        shell: pwsh
+        run: |
+          $archiveName = "MinecraftVersionChecker-${{ steps.tag.outputs.tag }}"
+          Compress-Archive -Path dist/MinecraftVersionChecker.exe, README.txt -DestinationPath "$archiveName.zip" -Force
+          echo "archiveName=$archiveName" >> $env:GITHUB_OUTPUT
+          $LASTEXITCODE = 0
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          body: |
+            ${{ steps.changelog.outputs.log }}
+
+            ---
+            **[Полный список изменений](${{ steps.changelog.outputs.compareUrl }})**
+
+            ### Инструкция по запуску
+
+            1. Скачайте архив `MinecraftVersionChecker-${{ steps.tag.outputs.tag }}.zip` из этого релиза (секция **Assets** ниже).
+            2. Распакуйте архив.
+            3. Запустите `MinecraftVersionChecker.exe` — установка не требуется.
+            4. Выберите нужный режим проверки из меню.
+            5. Дождитесь завершения проверки.
+
+            ### Требования для запуска
+
+            - **OS**: Windows 10 или Windows 11
+
+            Для самой программы не требуется установка Python или дополнительных библиотек.
+          draft: false
+          prerelease: false
+          files: MinecraftVersionChecker-${{ steps.tag.outputs.tag }}.zip
