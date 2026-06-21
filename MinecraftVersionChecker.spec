@@ -2,11 +2,14 @@
 
 
 a = Analysis(
-    ['combined_checker.py'],
+    ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('version_info.txt', '.')],
-    hiddenimports=['os', 'sys', 'hashlib', 'json', 'zipfile', 'datetime', 'pathlib', 'time', 'collections'],
+    datas=[],
+    hiddenimports=[
+        'os', 'sys', 'hashlib', 'zipfile', 'datetime', 'pathlib', 'time',
+        'collections', 'hashes', 'cheat_names',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -30,7 +33,7 @@ exe = EXE(
     upx_exclude=['vcruntime140.dll'],
     runtime_tmpdir=None,
     console=True,
-    disable_windowed_traceback=True,
+    disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
